@@ -38,6 +38,7 @@ function emit() {
 
 export async function loadCatalog() {
   store.catalog = await api('/api/v1/catalog');
+  emit();
   return store.catalog;
 }
 

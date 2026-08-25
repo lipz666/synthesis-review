@@ -9,6 +9,7 @@ Route order matters: the static mount is registered last so `/api/v1/*` and
 from __future__ import annotations
 
 import json
+import secrets
 import uuid
 from typing import Any
 
@@ -18,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import bundle as bundles
-from . import depict, evidence as evidence_mod, storage, verify
+from . import depict, evidence as evidence_mod, ingest as ingest_mod, storage, verify
 from .config import settings
 from .events import DECISIONS, DuplicateEvent, store
 
@@ -100,6 +101,8 @@ def health() -> dict[str, Any]:
         "database": settings.database_url,
         "events_writable": _events_writable(),
         "default_reviewer": settings.DEFAULT_REVIEWER,
+        "ingest_enabled": settings.INGEST_ENABLED,
+        "ingest_protected": bool(settings.INGEST_TOKEN),
     }
 
 
@@ -115,6 +118,101 @@ def _events_writable() -> bool:
 def reload_caches() -> dict[str, Any]:
     bundles.invalidate()
     return {"reloaded": True, "datasets": len(bundles.load_catalog().get("datasets", []))}
+
+
+# ------------------------------------------------------------------ ingest
+
+
+def _check_ingest_auth(api_key: str | None) -> None:
+    if not settings.INGEST_ENABLED:
+        raise HTTPException(status_code=503, detail="ingest is disabled on this deployment")
+    if not settings.INGEST_TOKEN:
+        return  # local/trusted deployment; /health reports ingest_protected: false
+    if not api_key or not secrets.compare_digest(api_key, settings.INGEST_TOKEN):
+        raise HTTPException(status_code=401, detail="X-Api-Key missing or wrong")
+
+
+async def _read_capped_body(request: Request) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > settings.INGEST_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"body over {settings.INGEST_MAX_BYTES} bytes")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > settings.INGEST_MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"body over {settings.INGEST_MAX_BYTES} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _ingest_response(report: dict[str, Any]) -> JSONResponse:
+    status = 201 if report.get("installed") else 200
+    return JSONResponse(status_code=status, content=report)
+
+
+@app.get(f"{API}/ingest/spec")
+def ingest_spec() -> dict[str, Any]:
+    spec = ingest_mod.submission_spec()
+    spec["enabled"] = settings.INGEST_ENABLED
+    spec["protected"] = bool(settings.INGEST_TOKEN)
+    return spec
+
+
+@app.post(f"{API}/ingest")
+async def ingest_package(
+    request: Request,
+    dataset_id: str | None = Query(None),
+    force: bool = Query(False),
+    dry_run: bool = Query(False),
+    api_key: str | None = Header(None, alias="X-Api-Key"),
+    submitted_by: str | None = Header(None, alias="X-Submitted-By"),
+) -> JSONResponse:
+    """Submit a zip package. Raw body, not multipart -- see /api/v1/ingest/spec."""
+    _check_ingest_auth(api_key)
+    raw = await _read_capped_body(request)
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty body; send the zip as the request body")
+    try:
+        staged = ingest_mod.stage_zip(raw, source=submitted_by)
+        report = ingest_mod.install(staged, dataset_id, force=force, dry_run=dry_run, submitted_by=submitted_by)
+    except ingest_mod.SubmissionError as exc:
+        raise HTTPException(status_code=exc.status, detail={"message": exc.message, **exc.report}) from exc
+    return _ingest_response(report)
+
+
+@app.post(f"{API}/ingest/json")
+async def ingest_json(
+    payload: dict[str, Any] = Body(...),
+    force: bool = Query(False),
+    dry_run: bool = Query(False),
+    api_key: str | None = Header(None, alias="X-Api-Key"),
+    submitted_by: str | None = Header(None, alias="X-Submitted-By"),
+) -> JSONResponse:
+    """Submit dataset JSON without images. The UI degrades to SMILES-only views."""
+    _check_ingest_auth(api_key)
+    try:
+        staged = ingest_mod.stage_json(payload, source=submitted_by)
+        report = ingest_mod.install(
+            staged, payload.get("dataset_id"), force=force, dry_run=dry_run, submitted_by=submitted_by
+        )
+    except ingest_mod.SubmissionError as exc:
+        raise HTTPException(status_code=exc.status, detail={"message": exc.message, **exc.report}) from exc
+    return _ingest_response(report)
+
+
+@app.post(f"{API}/ingest/validate")
+async def ingest_validate(
+    payload: dict[str, Any] = Body(...),
+    api_key: str | None = Header(None, alias="X-Api-Key"),
+) -> dict[str, Any]:
+    """Dry-run validation of a JSON submission: same checks, nothing written."""
+    _check_ingest_auth(api_key)
+    dataset = payload.get("dataset", payload)
+    try:
+        return ingest_mod.validate_submission(dataset, payload.get("review_queue"), payload.get("alignment_candidates"))
+    except ingest_mod.SubmissionError as exc:
+        raise HTTPException(status_code=exc.status, detail={"message": exc.message, **exc.report}) from exc
 
 
 @app.get(f"{API}/catalog")

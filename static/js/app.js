@@ -6,6 +6,7 @@ import { renderOverview } from './views/overview.js';
 import { renderQueue } from './views/queue.js';
 import { renderCompounds, renderCompound, renderReactions, renderReaction, renderAlignments, renderAlignment } from './views/entities.js';
 import { renderRoute, renderQuality, renderHistory, renderUnsupported } from './views/misc.js';
+import { renderSubmit } from './views/submit.js';
 
 const ROUTES = [
   { pattern: /^#?\/?$/, view: renderOverview, nav: 'overview' },
@@ -19,6 +20,7 @@ const ROUTES = [
   { pattern: /^#\/alignment\/(.+)$/, view: renderAlignment, nav: 'alignments', params: (m) => ({ uid: m[1] }) },
   { pattern: /^#\/quality$/, view: renderQuality, nav: 'quality' },
   { pattern: /^#\/history$/, view: renderHistory, nav: 'history' },
+  { pattern: /^#\/submit$/, view: renderSubmit, nav: 'submit' },
 ];
 
 let currentMain = null;
@@ -34,8 +36,13 @@ async function route() {
   clear(main);
   const hash = window.location.hash || '#/';
 
-  if (store.unsupported) {
+  if (store.unsupported && hash !== '#/submit') {
     renderUnsupported(main);
+    return;
+  }
+
+  if (!store.datasetId && hash !== '#/submit') {
+    main.append(empty('catalog 里还没有数据集。到「提交数据」上传一个抽取结果包，或运行 scripts/ingest_workspace.py。'));
     return;
   }
 
@@ -67,6 +74,7 @@ function buildNav() {
     ['alignments', '#/alignments', '原文对齐', counts.alignments ?? store.alignments.length, '<path d="M5 4h9l5 5v11H5z"/><path d="M8 13h8M8 17h5"/>'],
     ['quality', '#/quality', '质量', store.issues.length, '<path d="M12 4 3 19h18z"/><path d="M12 10v4M12 16.6v.6"/>'],
     ['history', '#/history', '历史', null, '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'],
+    ['submit', '#/submit', '提交数据', null, '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/><path d="M5 21h14"/>'],
   ];
   const nav = $('#nav');
   clear(nav);
@@ -84,8 +92,10 @@ function buildStatus(health) {
   clear(card);
   card.append(
     h('div', { class: 'status-row' },
-      h('span', { class: 'dot dot-ok' }),
-      h('span', { text: `${store.datasetId} · rev ${String(store.raw?.revision || '').slice(0, 8)}` })),
+      h('span', { class: `dot ${store.datasetId ? 'dot-ok' : 'dot-warn'}` }),
+      h('span', { text: store.datasetId
+        ? `${store.datasetId} · rev ${String(store.raw?.revision || '').slice(0, 8)}`
+        : '还没有数据集' })),
     h('div', { class: 'status-row' },
       h('span', { class: `dot ${health.rdkit?.available ? 'dot-ok' : 'dot-bad'}` }),
       h('span', { text: health.rdkit?.available ? 'RDKit 可用' : 'RDKit 不可用（结构图降级）' })),
@@ -163,8 +173,14 @@ async function boot() {
     const [health] = await Promise.all([loadHealth(), loadCatalog()]);
     const entries = datasetEntries();
     if (!entries.length) {
-      clear(main);
-      main.append(empty('catalog 里没有数据集。先运行 scripts/ingest_workspace.py 导入一次抽取结果。'));
+      // First run: no data yet. The app is still usable -- send the user to the
+      // page that fixes that, instead of a dead end.
+      buildNav();
+      buildStatus(health);
+      onChange(() => { buildStatus(health); buildDatasetPicker(); });
+      window.addEventListener('hashchange', route);
+      if (!window.location.hash || window.location.hash === '#/') window.location.hash = '#/submit';
+      await route();
       return;
     }
     const preferred = localStorage.getItem('review-dataset');
@@ -172,7 +188,7 @@ async function boot() {
     buildNav();
     buildDatasetPicker();
     buildStatus(health);
-    onChange(() => buildStatus(health));
+    onChange(() => { buildStatus(health); buildDatasetPicker(); });
     window.addEventListener('hashchange', route);
     await route();
   } catch (error) {

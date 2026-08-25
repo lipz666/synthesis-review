@@ -11,7 +11,8 @@ FastAPI 后端 + 一个自带的数据目录，跑起来不依赖抽取流水线
 核心原则：**抽取结果永远只读，人工判断永远只追加。** 服务端从不修改
 `dataset.json`；每一次决定都是一条新事件，某个审核项的当前状态是它全部事件的折叠结果。
 
-设计说明见 [docs/DESIGN_ZH.md](docs/DESIGN_ZH.md)。
+设计说明见 [docs/DESIGN_ZH.md](docs/DESIGN_ZH.md)，
+提交格式见 [docs/SUBMISSION_FORMAT_ZH.md](docs/SUBMISSION_FORMAT_ZH.md)。
 
 ---
 
@@ -40,30 +41,56 @@ python -m pytest tests -q
 
 ---
 
-## 2. 导入抽取结果
+## 2. 提交新数据
 
-`scripts/ingest_workspace.py` 是与流水线之间**唯一的桥**：
+三条路径，走的是**同一套校验和安装代码**。格式规范见
+[docs/SUBMISSION_FORMAT_ZH.md](docs/SUBMISSION_FORMAT_ZH.md)，
+机器可读版在 `GET /api/v1/ingest/spec`。
+
+### 2.1 HTTP 提交（远程、CI、别的机器）
 
 ```bash
-python scripts/ingest_workspace.py <workspace 目录>        # 导入 + 重建 catalog
-python scripts/ingest_workspace.py <workspace> --force     # 同一 revision 强制重导
-python scripts/ingest_workspace.py --rebuild-catalog       # 只重建索引，不复制
-python scripts/ingest_workspace.py <workspace> --data-dir /srv/review-data
+# 打包（在流水线那边）
+python scripts/ingest_workspace.py <workspace> --pack pkg.zip
+
+# 先校验，不写入
+curl -X POST "http://127.0.0.1:8770/api/v1/ingest?dataset_id=MY_PAPER&dry_run=true" \
+  -H "Content-Type: application/zip" --data-binary @pkg.zip
+
+# 导入
+curl -X POST "http://127.0.0.1:8770/api/v1/ingest?dataset_id=MY_PAPER" \
+  -H "Content-Type: application/zip" -H "X-Submitted-By: pipeline@ci" \
+  --data-binary @pkg.zip
 ```
 
-它做四件事：
+原始 body，不是 multipart。没有图片时可以直接发 JSON：
+`POST /api/v1/ingest/json`，body 为 `{"dataset_id": "...", "dataset": {...}}`。
 
-1. 把 `data/*.json`、`pages/`、`schemes/`、`molecule_crops/`、`moldet/`、`report/`
-   复制到 `data/datasets/{dataset_id}/{revision}/`；
-2. `state/`、`source/`、原始 PDF **不复制**——那些是流水线的内部产物和版权文件；
-3. revision 用 `sha256(dataset.json) + sha256(review_queue.json)` 计算，与流水线的
-   `build_review_catalog.py` 算法一致，两边对得上；
-4. 重建 `data/catalog.json`，并校验没有本地路径泄漏到公开 URL 里。
+### 2.2 浏览器提交
 
-同一数据集的多个 revision 会并存，catalog 里的 `revision` 指向最新的一个，
-`available_revisions` 列出全部。加第二篇论文只要再跑一次这个脚本，**前端一行都不用改**。
+左侧「提交数据」页：拖入 .zip → 先校验 → 看报告 → 导入 → 一键打开新数据集。
+catalog 为空时（全新部署）首页会直接跳到这里。
 
----
+### 2.3 本机目录
+
+```bash
+python scripts/ingest_workspace.py <workspace>            # 导入
+python scripts/ingest_workspace.py <workspace> --dry-run  # 只校验
+python scripts/ingest_workspace.py <workspace> --force    # 覆盖同一 revision
+python scripts/ingest_workspace.py --rebuild-catalog      # 只重建索引
+```
+
+### 2.4 提交时会发生什么
+
+1. 解压到临时目录，拒绝 `..`、绝对路径、非白名单后缀，限制大小与文件数；
+2. 校验结构与引用完整性（uid 唯一、反应参与者能解析、队列项 uid 唯一…）；
+3. **重新回查每条原文引用**：用 `char_start/char_end` 去页面文本里切片比对，
+   报告里给出 `verified/checked`——offsets 对不上在这一步就暴露，不用等审核员发现；
+4. 校验通过后才原子地移进 `data/datasets/{dataset_id}/{revision}/`；
+5. 重建 catalog 并清掉服务端缓存，**不需要重启**。
+
+revision 由内容决定（`sha256(dataset.json)+sha256(review_queue.json)` 前 16 位），
+所以重复提交同样的内容是幂等的：不会产生副本。`state/`、`source/`、原始 PDF 不会被复制。
 
 ## 3. 目录结构
 
@@ -76,6 +103,7 @@ synthesis-review/
 │   ├── evidence.py          bbox 坐标换算（page_px / image_px → 图像比例）
 │   ├── verify.py            用页面文本回查原文引用
 │   ├── depict.py            RDKit 结构图（可选依赖）
+│   ├── ingest.py            提交校验、暂存、原子安装、catalog 重建
 │   ├── events.py            append-only 审核事件存储（SQLite）
 │   └── main.py              HTTP 接口
 ├── static/                  前端（零构建，原生 ES modules）
@@ -88,8 +116,9 @@ synthesis-review/
 │       ├── evidence.js      证据查看器（bbox 叠加、缩放、原文高亮）
 │       ├── routemap.js      收敛路线的分层 DAG
 │       ├── adapters/        schema_version → ViewModel
-│       └── views/           各页面
+│       └── views/           各页面（含 submit.js 提交页）
 ├── scripts/ingest_workspace.py
+├── docs/SUBMISSION_FORMAT_ZH.md   提交格式规范
 ├── schema/events_postgres.sql
 ├── data/                    数据目录（catalog + 数据集 + 事件库）
 ├── tests/
@@ -111,6 +140,7 @@ synthesis-review/
 | 原文对齐 | 反应与原文并排，提及词高亮，回查状态 |
 | 质量 | 14 项校验 + 已知问题，可直达对应审核项 |
 | 历史 | 每个审核项的完整事件时间线，可导出 JSONL |
+| 提交数据 | 拖入 .zip 或粘贴 JSON，先校验再导入，含格式说明和 curl 示例 |
 
 **证据查看器**不是独立页面，而是全局抽屉：任何地方点 `EV_xxxx` 都能打开页面图、
 bbox 叠加、Scheme 裁剪和原文段落。
@@ -159,6 +189,10 @@ uid 形如 `ADHOC:compound:CMP_0003`，与队列项**共用同一套事件格式
 | GET | `/api/v1/molecule?smiles=` | RDKit 描述符（更正框实时校验用） |
 | GET | `/review-data/datasets/{id}/{revision}/{path}` | 数据集资产 |
 | POST | `/api/v1/admin/reload` | 重建 catalog / bundle 缓存 |
+| GET | `/api/v1/ingest/spec` | 提交格式规范（机器可读） |
+| POST | `/api/v1/ingest` | 提交 zip 数据包（原始 body） |
+| POST | `/api/v1/ingest/json` | 提交纯 JSON（无图片） |
+| POST | `/api/v1/ingest/validate` | 只校验 JSON，不写入 |
 
 提交事件：
 
@@ -191,6 +225,11 @@ curl -X POST http://127.0.0.1:8770/api/v1/datasets/INELEGANOLIDE_MVP_V2/review-e
 | `REVIEW_REQUIRE_REVIEWER` | `0` | 设 `1` 则拒绝未署名的事件 |
 | `REVIEW_CORS_ORIGINS` | 空 | 前后端不同源时才需要 |
 | `REVIEW_ASSET_MAX_AGE` | `86400` | 资产缓存秒数 |
+| `REVIEW_INGEST_ENABLED` | `1` | 设 `0` 关闭提交接口（只读部署） |
+| `REVIEW_INGEST_TOKEN` | 空 | 设了就必须带 `X-Api-Key` |
+| `REVIEW_INGEST_MAX_BYTES` | 512 MB | 单次上传上限 |
+| `REVIEW_INGEST_MAX_UNCOMPRESSED_BYTES` | 2 GB | 解压上限（防 zip bomb） |
+| `REVIEW_INGEST_MAX_ENTRIES` | 20000 | 包内文件数上限 |
 
 完整示例见 `.env.example`。
 
@@ -232,6 +271,7 @@ WORKSPACES_DIR=E:\OSTE\paper-record-to-eln\workspaces docker compose run --rm re
 1. **加身份验证。** 现在没有任何鉴权，任何能访问的人都能提交审核事件。
    放在反向代理后面（OAuth2 Proxy / Cloudflare Access）是最省事的做法，
    然后设 `REVIEW_REQUIRE_REVIEWER=1`，并把 `reviewer_id` 改成从 token 取。
+   **提交接口另外设 `REVIEW_INGEST_TOKEN`**——它是唯一会写数据目录的入口。
 2. **给事件库配备份。** 抽取结果可以重跑，人工判断不能。
 
 ---

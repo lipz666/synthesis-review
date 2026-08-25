@@ -44,6 +44,17 @@ class Settings:
     ASSET_SUFFIXES: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".svg", ".json", ".md", ".csv", ".txt"})
     ASSET_MAX_AGE: int = int(os.environ.get("REVIEW_ASSET_MAX_AGE", "86400"))
 
+    # --- submission intake -------------------------------------------------
+    # Ingest writes to the data directory, so it is the one endpoint that must
+    # be locked down before this app is reachable by anyone untrusted.
+    INGEST_ENABLED: bool = os.environ.get("REVIEW_INGEST_ENABLED", "1") == "1"
+    INGEST_TOKEN: str = os.environ.get("REVIEW_INGEST_TOKEN", "")
+    INGEST_MAX_BYTES: int = int(os.environ.get("REVIEW_INGEST_MAX_BYTES", str(512 * 1024 * 1024)))
+    INGEST_MAX_UNCOMPRESSED_BYTES: int = int(
+        os.environ.get("REVIEW_INGEST_MAX_UNCOMPRESSED_BYTES", str(2 * 1024 * 1024 * 1024))
+    )
+    INGEST_MAX_ENTRIES: int = int(os.environ.get("REVIEW_INGEST_MAX_ENTRIES", "20000"))
+
     # Above this size the bundle endpoint refuses to inline everything and the
     # frontend falls back to per-entity requests.
     BUNDLE_WARN_BYTES: int = int(os.environ.get("REVIEW_BUNDLE_WARN_BYTES", str(5 * 1024 * 1024)))

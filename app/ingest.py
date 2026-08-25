@@ -19,11 +19,12 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from . import verify
 from .config import settings
@@ -498,35 +499,35 @@ def stage_directory(workspace: Path, source: str | None = None) -> Staged:
     if not dataset_path.is_file():
         raise SubmissionError(f"{dataset_path} not found -- is this an extraction workspace?")
     workdir = _new_workdir()
-    written = 0
+    seen: set[str] = set()
     total = 0
     try:
+        def take(src: Path, name: str) -> None:
+            nonlocal total
+            # `report/` is listed both as named files and as an asset dir.
+            if name in seen or not src.is_file():
+                return
+            target = workdir / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+            seen.add(name)
+            total += src.stat().st_size
+
         for relative in PACKAGE_FILES:
-            src = workspace / relative
-            if src.is_file():
-                target = workdir / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, target)
-                written += 1
-                total += src.stat().st_size
+            take(workspace / relative, relative)
         for directory in ASSET_DIRS:
             src_dir = workspace / directory
             if not src_dir.is_dir():
                 continue
             for src in sorted(src_dir.rglob("*")):
-                if not src.is_file() or src.suffix.lower() not in settings.ASSET_SUFFIXES:
-                    continue
-                target = workdir / src.relative_to(workspace)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, target)
-                written += 1
-                total += src.stat().st_size
+                if src.is_file() and src.suffix.lower() in settings.ASSET_SUFFIXES:
+                    take(src, src.relative_to(workspace).as_posix())
         return Staged(
             root=workdir,
             dataset=_read_json(workdir / REQUIRED_FILE),
             review_queue=_optional_json(workdir / "data/review_queue.json"),
             candidates=_optional_json(workdir / "data/alignment_candidates.json"),
-            files=written,
+            files=len(seen),
             size=total,
             dataset_id_hint=workspace.name,
             source=source or str(workspace),
@@ -613,12 +614,7 @@ def install(
             encoding="utf-8",
         )
 
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists():
-            trash = target.with_name(f"{revision}.replaced-{uuid.uuid4().hex[:8]}")
-            os.replace(target, trash)
-            shutil.rmtree(trash, ignore_errors=True)
-        os.replace(staged.root, target)
+        _atomic_install(staged.root, target)
         staged.root = target  # no longer a temp dir; skip cleanup
 
         catalog = rebuild_catalog()
@@ -630,6 +626,38 @@ def install(
         return report
     finally:
         cleanup(staged)
+
+
+def _atomic_install(source: Path, target: Path, attempts: int = 5) -> None:
+    """Move a staged directory into place.
+
+    A directory rename is the atomic step, but on Windows it raises
+    PermissionError whenever anything else holds a handle inside either tree --
+    an indexer, an antivirus scan, or simply another worker serving an image
+    from the previous revision. Retry briefly, then fall back to copy + delete,
+    which is slower but always finishes.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    last: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            if target.exists():
+                trash = target.with_name(f"{target.name}.replaced-{uuid.uuid4().hex[:8]}")
+                os.replace(target, trash)
+                shutil.rmtree(trash, ignore_errors=True)
+            os.replace(source, target)
+            return
+        except (PermissionError, OSError) as exc:
+            last = exc
+            time.sleep(0.15 * (attempt + 1))
+
+    try:
+        shutil.copytree(source, target, dirs_exist_ok=True)
+        shutil.rmtree(source, ignore_errors=True)
+    except OSError as exc:
+        raise SubmissionError(
+            f"could not install into {target}: {exc} (earlier: {last})", status=500
+        ) from exc
 
 
 def cleanup(staged: Staged) -> None:
