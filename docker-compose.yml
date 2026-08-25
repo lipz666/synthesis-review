@@ -1,0 +1,37 @@
+# Local container run, and the shape of a small cloud deployment.
+#
+#   docker compose up --build
+#   docker compose run --rm review python scripts/ingest_workspace.py /workspaces/MY_PAPER
+#
+services:
+  review:
+    build: .
+    ports:
+      - "8770:8770"
+    environment:
+      REVIEW_DATA_DIR: /data
+      REVIEW_STATIC_DIR: /app/static
+      REVIEW_DEFAULT_REVIEWER: anonymous
+      # REVIEW_DATABASE_URL: postgresql://review:review@db:5432/review
+      # REVIEW_CORS_ORIGINS: https://review.example.com
+    volumes:
+      # The extracted database. Replace with a managed volume or an object-store
+      # sync target in the cloud.
+      - ./data:/data
+      # Only needed when ingesting new extractions from inside the container.
+      - ${WORKSPACES_DIR:-./data}:/workspaces:ro
+    restart: unless-stopped
+
+  # Uncomment when moving the event log off SQLite.
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: review
+  #     POSTGRES_PASSWORD: review
+  #     POSTGRES_DB: review
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #     - ./schema/events_postgres.sql:/docker-entrypoint-initdb.d/10-events.sql:ro
+
+# volumes:
+#   pgdata:

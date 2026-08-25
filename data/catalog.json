@@ -1,0 +1,86 @@
+{
+  "schema_version": "review.catalog.v1",
+  "generated_at": "2026-08-25T09:50:56.394100+00:00",
+  "asset_url_prefix": "/review-data/datasets",
+  "contracts": {
+    "tse.dataset.v1": {
+      "documentation": "DATA_CONTRACT_V1_ZH.md"
+    },
+    "synthlit.interchange.v1": {
+      "documentation": "INTERCHANGE_CONTRACT_V1_ZH.md"
+    }
+  },
+  "datasets": [
+    {
+      "dataset_id": "INELEGANOLIDE_MVP_V2",
+      "paper_id": "INELEGANOLIDE_MVP_V2",
+      "schema_version": "tse.dataset.v1",
+      "revision": "e820d72694c6ed8e",
+      "title": "A Convergent Total Synthesis of (+)-Ineleganolide",
+      "doi": "10.1021/jacs.3c02142",
+      "year": 2023,
+      "target": "CMP_0019",
+      "pipeline_state": "HUMAN_REVIEW",
+      "ingested_at": "2026-08-25T09:50:56.384085+00:00",
+      "files": {
+        "dataset": "data/dataset.json",
+        "review_queue": "data/review_queue.json",
+        "alignment_candidates": "data/alignment_candidates.json",
+        "database_rows": "data/database_rows.json",
+        "route_svg": "report/route.svg",
+        "extraction_summary": "report/extraction_summary.md",
+        "reactions_csv": "data/reactions.csv",
+        "reaction_smiles_csv": "data/reaction_smiles.csv"
+      },
+      "urls": {
+        "dataset": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/data/dataset.json",
+        "review_queue": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/data/review_queue.json",
+        "alignment_candidates": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/data/alignment_candidates.json",
+        "database_rows": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/data/database_rows.json",
+        "route_svg": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/report/route.svg",
+        "extraction_summary": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/report/extraction_summary.md",
+        "reactions_csv": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/data/reactions.csv",
+        "reaction_smiles_csv": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/data/reaction_smiles.csv"
+      },
+      "asset_base": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/",
+      "asset_roots": {
+        "pages": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/pages/",
+        "schemes": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/schemes/",
+        "molecule_crops": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/molecule_crops/",
+        "moldet": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/moldet/",
+        "report": "/review-data/datasets/INELEGANOLIDE_MVP_V2/e820d72694c6ed8e/report/"
+      },
+      "counts": {
+        "compounds": 19,
+        "reactions": 14,
+        "procedures": 0,
+        "alignments": 18,
+        "evidence": 38,
+        "issues": 5,
+        "validations": 14
+      },
+      "entity_total": 51,
+      "review": {
+        "total": 5,
+        "by_status": {
+          "pending": 5
+        },
+        "by_priority": {
+          "high": 1,
+          "medium": 2,
+          "low": 2
+        },
+        "by_type": {
+          "issue": 5
+        }
+      },
+      "integrity": {
+        "dataset_sha256": "d3aa0074d8755706e1bac00ff11183c3a1c511686ab89f6e44ead1bd701799c6",
+        "review_queue_sha256": "bbb4f94bfc210967545ae365a2ef59492b53bbfa628645d8421419a4355368bc"
+      },
+      "available_revisions": [
+        "e820d72694c6ed8e"
+      ]
+    }
+  ]
+}

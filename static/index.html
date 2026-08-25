@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>合成抽取审核台</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%A7%AA%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M9 3v6.2L3.8 18a2 2 0 0 0 1.7 3h13a2 2 0 0 0 1.7-3L15 9.2V3" />
+            <path d="M7.5 3h9" /><path d="M7 14.5h10" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">合成抽取审核台</div>
+          <div class="brand-sub">Synthesis Review</div>
+        </div>
+      </div>
+
+      <div id="dataset-picker" class="dataset-picker"></div>
+      <nav class="nav" id="nav"></nav>
+
+      <div class="sidebar-foot">
+        <label class="field reviewer-field">
+          <span>审核人</span>
+          <input class="input input-sm" id="reviewer-input" placeholder="你的名字" />
+        </label>
+        <div class="status-card" id="status-card">
+          <div class="status-row"><span class="dot"></span><span>载入中…</span></div>
+        </div>
+        <button class="theme-toggle" id="theme-toggle" title="切换主题">
+          <span class="theme-icon light">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          </span>
+          <span class="theme-icon dark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+          </span>
+          <span class="theme-label">外观</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="loading-screen"><div class="spinner"></div></div>
+    </main>
+  </div>
+
+  <div class="toast-host" id="toast-host"></div>
+  <div class="drawer-host" id="drawer-host" hidden>
+    <div class="drawer-backdrop" data-close="1"></div>
+    <div class="drawer" id="drawer">
+      <button class="drawer-close" data-close="1" aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

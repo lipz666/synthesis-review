@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data/datasets/
+data/*.sqlite3*
+.venv/
+
+.pytest_cache/
